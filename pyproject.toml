@@ -1,6 +1,6 @@
 [project]
 name = "mcp_massive"
-version = "0.5.1"
+version = "0.6.0"
 description = "A MCP server project"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -24,4 +24,4 @@ dev = [
 ]
 
 [project.scripts]
-mcp_massive = "mcp_massive:run"
+mcp_massive = "mcp_massive:main"
