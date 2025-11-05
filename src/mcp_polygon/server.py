@@ -591,6 +591,9 @@ async def get_snapshot_crypto_book(
 async def list_snapshot_options_chain(
     underlying_asset: str,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get snapshots for all options contracts for an underlying ticker. This provides a comprehensive view of the options chain including pricing, Greeks, implied volatility, and more.
@@ -602,6 +605,11 @@ async def list_snapshot_options_chain(
     - limit: Number of results (default 10, max 250)
     - order: Order results based on sort field
     - sort: Sort field for ordering
+
+    Output filtering (optional):
+    - fields: Comma-separated field names or preset (e.g., "ticker,close" or "preset:ohlc")
+    - output_format: Response format - "csv" (default), "json", or "compact"
+    - aggregate: Return single record - "first", "last", or None for all records
     """
     try:
         results = polygon_client.list_snapshot_options_chain(
@@ -610,7 +618,7 @@ async def list_snapshot_options_chain(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
