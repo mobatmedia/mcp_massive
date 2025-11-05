@@ -646,6 +646,9 @@ async def list_snapshot_options_chain(
     fields: Optional[List[str]] = None,
     output_format: Optional[str] = "csv",
     aggregate: Optional[str] = None,
+    # Catch common mistakes - these parameters don't exist!
+    option_type: Optional[str] = None,
+    contract_type: Optional[str] = None,
 ) -> str:
     """
     Get snapshots for all options contracts for an underlying ticker. This provides a comprehensive view of the options chain including pricing, Greeks, implied volatility, and more.
@@ -692,11 +695,26 @@ async def list_snapshot_options_chain(
         fields=["preset:ohlc"]
     """
     try:
-        # Validate contract_type if provided
+        # Catch common mistakes - these should be inside params dict!
+        if option_type is not None:
+            return f"Error: 'option_type' is not a valid parameter. Use params={{'contract_type': 'call'}} or params={{'contract_type': 'put'}} instead. Note: singular 'call' not 'calls'."
+
+        if contract_type is not None:
+            return f"Error: 'contract_type' should be inside the params dictionary, not a direct parameter. Use params={{'contract_type': '{contract_type}'}} instead."
+
+        # Validate fields for common mistakes
+        if fields:
+            for field in fields:
+                if field == "expiration_dates":
+                    return "Error: Field name should be 'expiration_date' (singular), not 'expiration_dates' (plural). Use fields=['expiration_date']"
+                if field == "strike_prices":
+                    return "Error: Field name should be 'strike_price' (singular), not 'strike_prices' (plural). Use fields=['strike_price']"
+
+        # Validate contract_type if provided in params
         if params and "contract_type" in params:
-            contract_type = params["contract_type"]
-            if contract_type not in ["call", "put"]:
-                return f"Error: contract_type must be 'call' or 'put' (singular), not '{contract_type}'. Use params={{'contract_type': 'call'}} or params={{'contract_type': 'put'}}"
+            ct = params["contract_type"]
+            if ct not in ["call", "put"]:
+                return f"Error: contract_type must be 'call' or 'put' (singular), not '{ct}'. Use params={{'contract_type': 'call'}} or params={{'contract_type': 'put'}}"
 
         results = polygon_client.list_snapshot_options_chain(
             underlying_asset=underlying_asset,
@@ -704,12 +722,21 @@ async def list_snapshot_options_chain(
             raw=True,
         )
 
-        return _apply_output_filtering(
+        result = _apply_output_filtering(
             results.data,
             fields=fields,
             output_format=output_format,
             aggregate=aggregate,
         )
+
+        # If result is empty, provide helpful message
+        if not result or result.strip() == "":
+            if fields:
+                return f"No data returned. The requested fields {fields} may not exist in the response. Common field names are: expiration_date, strike_price, ticker, close, open, high, low, volume. Try without filtering first to see available fields."
+            else:
+                return "No data returned from API. The underlying asset may not have options contracts available."
+
+        return result
     except Exception as e:
         return f"Error: {e}"
 
