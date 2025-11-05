@@ -653,18 +653,26 @@ async def list_snapshot_options_chain(
     """
     Get snapshots for all options contracts for an underlying ticker. This provides a comprehensive view of the options chain including pricing, Greeks, implied volatility, and more.
 
+    IMPORTANT: This tool queries ALL available options contracts (subject to limit).
+    It does NOT have special filtering like 'dte', 'target_date', or 'strikes_near_price'.
+    To get more expiration dates, simply increase the limit parameter.
+
     Args:
         underlying_asset: The underlying ticker symbol (e.g., "AAPL", "MSFT")
         params: Optional dictionary of API filters:
             - contract_type: "call" or "put" (filter by option type)
+            - limit: Number of contracts to return (default 10, max 250)
+                     Increase this to see more expiration dates!
             - expiration_date.gte / expiration_date.lte: Filter by expiration (YYYY-MM-DD format)
             - strike_price.gte / strike_price.lte: Filter by strike price
-            - limit: Number of results (default 10, max 250)
             - order: "asc" or "desc"
             - sort: Field to sort by
         fields: List of field names to return (e.g., ["expiration_date", "strike_price"]) or preset
         output_format: Response format - "csv" (default), "json", or "compact"
         aggregate: Return single record - "first", "last", or None for all records
+
+    Note: Single-field queries (e.g., fields=["expiration_date"]) automatically
+          return UNIQUE values. If you get only 1-2 dates, increase the limit!
 
     Available field presets:
         - preset:price (ticker, close, timestamp)
@@ -679,19 +687,30 @@ async def list_snapshot_options_chain(
         - close, open, high, low, volume
 
     Examples:
-        # Get call options with expiration dates only
+        # Get many expiration dates (increase limit!)
         underlying_asset="MSFT",
-        params={"contract_type": "call", "limit": 50},
+        params={"contract_type": "call", "limit": 100},
+        fields=["expiration_date"]
+
+        # Get expirations within a date range
+        underlying_asset="AAPL",
+        params={
+            "contract_type": "call",
+            "expiration_date.gte": "2025-01-01",
+            "expiration_date.lte": "2025-12-31",
+            "limit": 100
+        },
         fields=["expiration_date"]
 
         # Get strike and expiration for puts in JSON format
         underlying_asset="AAPL",
-        params={"contract_type": "put"},
+        params={"contract_type": "put", "limit": 50},
         fields=["strike_price", "expiration_date"],
         output_format="json"
 
         # Use a preset for quick queries
         underlying_asset="TSLA",
+        params={"limit": 50},
         fields=["preset:ohlc"]
     """
     try:
