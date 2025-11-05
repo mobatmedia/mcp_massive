@@ -650,33 +650,46 @@ async def list_snapshot_options_chain(
     """
     Get snapshots for all options contracts for an underlying ticker. This provides a comprehensive view of the options chain including pricing, Greeks, implied volatility, and more.
 
-    Common params filters:
-    - expiration_date.gte / expiration_date.lte: Filter by expiration date (YYYY-MM-DD)
-    - strike_price.gte / strike_price.lte: Filter by strike price
-    - contract_type: Filter by "call" or "put"
-    - limit: Number of results (default 10, max 250)
-    - order: Order results based on sort field
-    - sort: Sort field for ordering
-
-    Output Filtering (NEW):
-        fields: List of field names (e.g., ["ticker", "strike_price", "expiration_date"]) or preset
-                (e.g., ["preset:price"], ["preset:ohlc"]). Available presets:
-                - preset:price (ticker, close, timestamp)
-                - preset:ohlc (ticker, open, high, low, close, timestamp)
-                - preset:ohlcv (includes volume)
-                - preset:summary (ticker, close, volume, change_percent)
+    Args:
+        underlying_asset: The underlying ticker symbol (e.g., "AAPL", "MSFT")
+        params: Optional dictionary of API filters:
+            - contract_type: "call" or "put" (filter by option type)
+            - expiration_date.gte / expiration_date.lte: Filter by expiration (YYYY-MM-DD format)
+            - strike_price.gte / strike_price.lte: Filter by strike price
+            - limit: Number of results (default 10, max 250)
+            - order: "asc" or "desc"
+            - sort: Field to sort by
+        fields: List of field names to return (e.g., ["expiration_date", "strike_price"]) or preset
         output_format: Response format - "csv" (default), "json", or "compact"
         aggregate: Return single record - "first", "last", or None for all records
 
+    Available field presets:
+        - preset:price (ticker, close, timestamp)
+        - preset:ohlc (ticker, open, high, low, close, timestamp)
+        - preset:ohlcv (includes volume)
+        - preset:summary (ticker, close, volume, change_percent)
+
+    Common field names:
+        - expiration_date (singular!)
+        - strike_price
+        - ticker
+        - close, open, high, low, volume
+
     Examples:
-        # Get only expiration dates
-        fields=["expiration_date"], output_format="csv"
+        # Get call options with expiration dates only
+        underlying_asset="MSFT",
+        params={"contract_type": "call", "limit": 50},
+        fields=["expiration_date"]
 
-        # Get strike and expiration in compact format
-        fields=["strike_price", "expiration_date"], output_format="compact"
+        # Get strike and expiration for puts in JSON format
+        underlying_asset="AAPL",
+        params={"contract_type": "put"},
+        fields=["strike_price", "expiration_date"],
+        output_format="json"
 
-        # Use a preset
-        fields=["preset:ohlc"], output_format="json"
+        # Use a preset for quick queries
+        underlying_asset="TSLA",
+        fields=["preset:ohlc"]
     """
     try:
         results = polygon_client.list_snapshot_options_chain(
