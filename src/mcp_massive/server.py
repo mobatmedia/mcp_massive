@@ -735,27 +735,74 @@ async def list_snapshot_options_chain(
             if ct not in ["call", "put"]:
                 return f"Error: contract_type must be 'call' or 'put' (singular), not '{ct}'. Use params={{'contract_type': 'call'}} or params={{'contract_type': 'put'}}"
 
-        results = polygon_client.list_snapshot_options_chain(
-            underlying_asset=underlying_asset,
-            params=params,
-            raw=True,
-        )
+        # Smart fetching for single-field queries: automatically get more data if deduplication reduces results too much
+        if fields and len(fields) == 1 and not (fields[0].startswith("preset:")):
+            # This is a single-field query that will be deduplicated
+            # Start with the requested limit (or default 10)
+            initial_limit = (params or {}).get("limit", 10)
 
-        result = _apply_output_filtering(
-            results.data,
-            fields=fields,
-            output_format=output_format,
-            aggregate=aggregate,
-        )
+            # Try progressively larger limits until we get enough unique values
+            for attempt_limit in [initial_limit, 50, 100, 250]:
+                # Make a copy of params with our limit
+                attempt_params = dict(params) if params else {}
+                attempt_params["limit"] = attempt_limit
 
-        # If result is empty, provide helpful message
-        if not result or result.strip() == "":
-            if fields:
-                return f"No data returned. The requested fields {fields} may not exist in the response. Common field names are: expiration_date, strike_price, ticker, close, open, high, low, volume. Try without filtering first to see available fields."
+                results = polygon_client.list_snapshot_options_chain(
+                    underlying_asset=underlying_asset,
+                    params=attempt_params,
+                    raw=True,
+                )
+
+                result = _apply_output_filtering(
+                    results.data,
+                    fields=fields,
+                    output_format=output_format,
+                    aggregate=aggregate,
+                )
+
+                # Count unique values in result
+                if result and result.strip():
+                    lines = result.strip().split('\n')
+                    # Skip header and count data lines
+                    unique_count = len([line for line in lines[1:] if line and not line.startswith("Note:")])
+
+                    # If we got a good number of unique values, or we've hit max limit, return
+                    if unique_count >= min(10, initial_limit) or attempt_limit == 250:
+                        if unique_count > 0:
+                            return result
+
+                # If we got nothing, break early
+                if not result or not result.strip():
+                    break
+
+            # If we get here, return whatever we got
+            if result:
+                return result
             else:
                 return "No data returned from API. The underlying asset may not have options contracts available."
+        else:
+            # Normal query without smart retry
+            results = polygon_client.list_snapshot_options_chain(
+                underlying_asset=underlying_asset,
+                params=params,
+                raw=True,
+            )
 
-        return result
+            result = _apply_output_filtering(
+                results.data,
+                fields=fields,
+                output_format=output_format,
+                aggregate=aggregate,
+            )
+
+            # If result is empty, provide helpful message
+            if not result or result.strip() == "":
+                if fields:
+                    return f"No data returned. The requested fields {fields} may not exist in the response. Common field names are: expiration_date, strike_price, ticker, close, open, high, low, volume. Try without filtering first to see available fields."
+                else:
+                    return "No data returned from API. The underlying asset may not have options contracts available."
+
+            return result
     except Exception as e:
         return f"Error: {e}"
 

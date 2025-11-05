@@ -145,7 +145,8 @@ def json_to_csv_filtered(
 
     # Smart deduplication: If filtering to a single field, return unique values
     # This makes queries like "show me expiration dates" return distinct dates
-    original_count = len(flattened)
+    # Note: The tool itself now has smart retry logic to automatically fetch more
+    # data if deduplication results in too few unique values
     if fields and len(fields) == 1 and len(flattened) > 1:
         field_name = list(flattened[0].keys())[0] if flattened[0] else None
         if field_name:
@@ -161,12 +162,6 @@ def json_to_csv_filtered(
             # If we have duplicates, deduplicate
             if len(unique_values) < len(values):
                 flattened = [{field_name: val} for val in unique_values]
-
-                # If we reduced to very few results, add a helpful note
-                if len(unique_values) <= 3 and original_count >= 10:
-                    # Add a note row at the end
-                    note_row = {field_name: f"Note: Showing {len(unique_values)} unique values from {original_count} records. Increase limit in params to see more (e.g., params={{'limit': 100}})"}
-                    flattened.append(note_row)
 
     # Get all unique keys across all records (for consistent column ordering)
     all_keys = []
