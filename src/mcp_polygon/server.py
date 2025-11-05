@@ -8,6 +8,40 @@ from .formatters import json_to_csv
 
 from datetime import datetime, date
 
+
+def _apply_output_filtering(
+    raw_data: bytes,
+    fields: Optional[str] = None,
+    output_format: str = "csv",
+    aggregate: Optional[str] = None,
+) -> str:
+    """
+    Helper function to apply output filtering to API responses.
+
+    Args:
+        raw_data: Raw bytes from API response
+        fields: Field selection (comma-separated or preset)
+        output_format: Output format (csv, json, compact)
+        aggregate: Aggregation method (first, last)
+
+    Returns:
+        Filtered and formatted string response
+    """
+    # Check if filtering is requested
+    if fields or output_format != "csv" or aggregate:
+        from .filters import parse_filter_params, apply_filters
+
+        filter_options = parse_filter_params(
+            fields=fields,
+            output_format=output_format,
+            aggregate=aggregate,
+        )
+        return apply_filters(raw_data.decode("utf-8"), filter_options)
+    else:
+        # Backward compatible: no filtering, use original formatter
+        return json_to_csv(raw_data.decode("utf-8"))
+
+
 POLYGON_API_KEY = os.environ.get("POLYGON_API_KEY", "")
 if not POLYGON_API_KEY:
     print("Warning: POLYGON_API_KEY environment variable not set.")
@@ -35,9 +69,33 @@ async def get_aggs(
     sort: Optional[str] = None,
     limit: Optional[int] = 10,
     params: Optional[Dict[str, Any]] = None,
+    # NEW: Output filtering parameters
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     List aggregate bars for a ticker over a given date range in custom time window sizes.
+
+    Output Filtering (NEW):
+        fields: Comma-separated field names (e.g., "ticker,close,volume") or preset name
+                (e.g., "preset:price", "preset:ohlc"). Available presets:
+                - preset:price (ticker, close, timestamp)
+                - preset:ohlc (ticker, open, high, low, close, timestamp)
+                - preset:ohlcv (includes volume)
+                - preset:summary (ticker, close, volume, change_percent)
+        output_format: Response format - "csv" (default), "json", or "compact"
+        aggregate: Return single record - "first", "last", or None for all records
+
+    Examples:
+        # Get only closing prices in compact format
+        fields="close", output_format="compact", aggregate="last"
+
+        # Get OHLC data as JSON
+        fields="preset:ohlc", output_format="json"
+
+        # Get everything as CSV (default/backward compatible behavior)
+        (no filtering params)
     """
     try:
         results = polygon_client.get_aggs(
@@ -53,8 +111,7 @@ async def get_aggs(
             raw=True,
         )
 
-        # Parse the binary data to string and then to JSON
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -70,9 +127,14 @@ async def list_aggs(
     sort: Optional[str] = None,
     limit: Optional[int] = 10,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Iterate through aggregate bars for a ticker over a given date range.
+
+    Supports output filtering - see get_aggs for details on fields, output_format, and aggregate parameters.
     """
     try:
         results = polygon_client.list_aggs(
@@ -88,7 +150,7 @@ async def list_aggs(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -101,9 +163,14 @@ async def get_grouped_daily_aggs(
     locale: Optional[str] = None,
     market_type: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get grouped daily bars for entire market for a specific date.
+
+    Supports output filtering - see get_aggs for details on fields, output_format, and aggregate parameters.
     """
     try:
         results = polygon_client.get_grouped_daily_aggs(
@@ -116,7 +183,7 @@ async def get_grouped_daily_aggs(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -127,6 +194,9 @@ async def get_daily_open_close_agg(
     date: str,
     adjusted: Optional[bool] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get daily open, close, high, and low for a specific ticker and date.
@@ -136,7 +206,7 @@ async def get_daily_open_close_agg(
             ticker=ticker, date=date, adjusted=adjusted, params=params, raw=True
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -146,6 +216,9 @@ async def get_previous_close_agg(
     ticker: str,
     adjusted: Optional[bool] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get previous day's open, close, high, and low for a specific ticker.
@@ -155,7 +228,7 @@ async def get_previous_close_agg(
             ticker=ticker, adjusted=adjusted, params=params, raw=True
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -172,6 +245,9 @@ async def list_trades(
     sort: Optional[str] = None,
     order: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get trades for a ticker symbol.
@@ -191,7 +267,7 @@ async def list_trades(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -200,14 +276,29 @@ async def list_trades(
 async def get_last_trade(
     ticker: str,
     params: Optional[Dict[str, Any]] = None,
+    # NEW: Output filtering parameters
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
 ) -> str:
     """
     Get the most recent trade for a ticker symbol.
+
+    Output Filtering (NEW):
+        fields: Comma-separated field names (e.g., "price,size") or preset name
+                (e.g., "preset:trade"). Available presets:
+                - preset:trade (price, size, timestamp)
+        output_format: Response format - "csv" (default), "json", or "compact"
+
+    Examples:
+        # Get just the price in compact format
+        fields="price", output_format="compact"
+
+        # Get trade details as JSON
+        fields="preset:trade", output_format="json"
     """
     try:
         results = polygon_client.get_last_trade(ticker=ticker, params=params, raw=True)
-
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format)
     except Exception as e:
         return f"Error: {e}"
 
@@ -217,6 +308,9 @@ async def get_last_crypto_trade(
     from_: str,
     to: str,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get the most recent trade for a crypto pair.
@@ -226,7 +320,7 @@ async def get_last_crypto_trade(
             from_=from_, to=to, params=params, raw=True
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -243,6 +337,9 @@ async def list_quotes(
     sort: Optional[str] = None,
     order: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get quotes for a ticker symbol.
@@ -262,7 +359,7 @@ async def list_quotes(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -271,6 +368,9 @@ async def list_quotes(
 async def get_last_quote(
     ticker: str,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get the most recent quote for a ticker symbol.
@@ -278,7 +378,7 @@ async def get_last_quote(
     try:
         results = polygon_client.get_last_quote(ticker=ticker, params=params, raw=True)
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -288,6 +388,9 @@ async def get_last_forex_quote(
     from_: str,
     to: str,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get the most recent forex quote.
@@ -297,7 +400,7 @@ async def get_last_forex_quote(
             from_=from_, to=to, params=params, raw=True
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -309,6 +412,9 @@ async def get_real_time_currency_conversion(
     amount: Optional[float] = None,
     precision: Optional[int] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get real-time currency conversion.
@@ -323,7 +429,7 @@ async def get_real_time_currency_conversion(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -336,6 +442,9 @@ async def list_universal_snapshots(
     limit: Optional[int] = 10,
     sort: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get universal snapshots for multiple assets of a specific type.
@@ -351,7 +460,7 @@ async def list_universal_snapshots(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -362,6 +471,9 @@ async def get_snapshot_all(
     tickers: Optional[List[str]] = None,
     include_otc: Optional[bool] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get a snapshot of all tickers in a market.
@@ -375,7 +487,7 @@ async def get_snapshot_all(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -386,6 +498,9 @@ async def get_snapshot_direction(
     direction: str,
     include_otc: Optional[bool] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get gainers or losers for a market.
@@ -399,7 +514,7 @@ async def get_snapshot_direction(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -409,6 +524,9 @@ async def get_snapshot_ticker(
     market_type: str,
     ticker: str,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get snapshot for a specific ticker.
@@ -418,7 +536,7 @@ async def get_snapshot_ticker(
             market_type=market_type, ticker=ticker, params=params, raw=True
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -428,6 +546,9 @@ async def get_snapshot_option(
     underlying_asset: str,
     option_contract: str,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get snapshot for a specific option contract.
@@ -440,7 +561,7 @@ async def get_snapshot_option(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -449,6 +570,9 @@ async def get_snapshot_option(
 async def get_snapshot_crypto_book(
     ticker: str,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get snapshot for a crypto ticker's order book.
@@ -456,6 +580,34 @@ async def get_snapshot_crypto_book(
     try:
         results = polygon_client.get_snapshot_crypto_book(
             ticker=ticker, params=params, raw=True
+        )
+
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
+    except Exception as e:
+        return f"Error: {e}"
+
+
+@poly_mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+async def list_snapshot_options_chain(
+    underlying_asset: str,
+    params: Optional[Dict[str, Any]] = None,
+) -> str:
+    """
+    Get snapshots for all options contracts for an underlying ticker. This provides a comprehensive view of the options chain including pricing, Greeks, implied volatility, and more.
+
+    Common params filters:
+    - expiration_date.gte / expiration_date.lte: Filter by expiration date (YYYY-MM-DD)
+    - strike_price.gte / strike_price.lte: Filter by strike price
+    - contract_type: Filter by "call" or "put"
+    - limit: Number of results (default 10, max 250)
+    - order: Order results based on sort field
+    - sort: Sort field for ordering
+    """
+    try:
+        results = polygon_client.list_snapshot_options_chain(
+            underlying_asset=underlying_asset,
+            params=params,
+            raw=True,
         )
 
         return json_to_csv(results.data.decode("utf-8"))
@@ -466,6 +618,9 @@ async def get_snapshot_crypto_book(
 @poly_mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_market_holidays(
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get upcoming market holidays and their open/close times.
@@ -473,7 +628,7 @@ async def get_market_holidays(
     try:
         results = polygon_client.get_market_holidays(params=params, raw=True)
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -481,6 +636,9 @@ async def get_market_holidays(
 @poly_mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_market_status(
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get current trading status of exchanges and financial markets.
@@ -488,7 +646,7 @@ async def get_market_status(
     try:
         results = polygon_client.get_market_status(params=params, raw=True)
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -508,6 +666,9 @@ async def list_tickers(
     order: Optional[str] = None,
     limit: Optional[int] = 10,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Query supported ticker symbols across stocks, indices, forex, and crypto.
@@ -530,7 +691,7 @@ async def list_tickers(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -540,6 +701,9 @@ async def get_ticker_details(
     ticker: str,
     date: Optional[Union[str, datetime, date]] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get detailed information about a specific ticker.
@@ -549,7 +713,7 @@ async def get_ticker_details(
             ticker=ticker, date=date, params=params, raw=True
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -562,6 +726,9 @@ async def list_ticker_news(
     sort: Optional[str] = None,
     order: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get recent news articles for a stock ticker.
@@ -577,7 +744,7 @@ async def list_ticker_news(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -587,6 +754,9 @@ async def get_ticker_types(
     asset_class: Optional[str] = None,
     locale: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     List all ticker types supported by Polygon.io.
@@ -596,7 +766,7 @@ async def get_ticker_types(
             asset_class=asset_class, locale=locale, params=params, raw=True
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -608,6 +778,9 @@ async def list_splits(
     reverse_split: Optional[bool] = None,
     limit: Optional[int] = 10,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get historical stock splits.
@@ -622,7 +795,7 @@ async def list_splits(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -635,6 +808,9 @@ async def list_dividends(
     dividend_type: Optional[str] = None,
     limit: Optional[int] = 10,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get historical cash dividends.
@@ -650,7 +826,7 @@ async def list_dividends(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -662,6 +838,9 @@ async def list_conditions(
     id: Optional[int] = None,
     sip: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     List conditions used by Polygon.io.
@@ -676,7 +855,7 @@ async def list_conditions(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -686,6 +865,9 @@ async def get_exchanges(
     asset_class: Optional[str] = None,
     locale: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     List exchanges known by Polygon.io.
@@ -695,7 +877,7 @@ async def get_exchanges(
             asset_class=asset_class, locale=locale, params=params, raw=True
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -723,6 +905,9 @@ async def list_stock_financials(
     sort: Optional[str] = None,
     order: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get fundamental financial data for companies.
@@ -753,7 +938,7 @@ async def list_stock_financials(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -771,6 +956,9 @@ async def list_ipos(
     sort: Optional[str] = None,
     order: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Retrieve upcoming or historical IPOs.
@@ -791,7 +979,7 @@ async def list_ipos(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -808,6 +996,9 @@ async def list_short_interest(
     sort: Optional[str] = None,
     order: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Retrieve short interest data for stocks.
@@ -827,7 +1018,7 @@ async def list_short_interest(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -844,6 +1035,9 @@ async def list_short_volume(
     sort: Optional[str] = None,
     order: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Retrieve short volume data for stocks.
@@ -863,7 +1057,7 @@ async def list_short_volume(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -880,6 +1074,9 @@ async def list_treasury_yields(
     sort: Optional[str] = None,
     order: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Retrieve treasury yield data.
@@ -898,7 +1095,7 @@ async def list_treasury_yields(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -914,6 +1111,9 @@ async def list_inflation(
     limit: Optional[int] = 10,
     sort: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get inflation data from the Federal Reserve.
@@ -932,7 +1132,7 @@ async def list_inflation(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -984,6 +1184,9 @@ async def list_benzinga_analyst_insights(
     limit: Optional[int] = 10,
     sort: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     List Benzinga analyst insights.
@@ -1038,7 +1241,7 @@ async def list_benzinga_analyst_insights(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -1072,6 +1275,9 @@ async def list_benzinga_analysts(
     limit: Optional[int] = 10,
     sort: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     List Benzinga analysts.
@@ -1108,7 +1314,7 @@ async def list_benzinga_analysts(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -1123,6 +1329,9 @@ async def list_benzinga_consensus_ratings(
     date_lte: Optional[Union[str, date]] = None,
     limit: Optional[int] = 10,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     List Benzinga consensus ratings for a ticker.
@@ -1140,7 +1349,7 @@ async def list_benzinga_consensus_ratings(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -1204,6 +1413,9 @@ async def list_benzinga_earnings(
     limit: Optional[int] = 10,
     sort: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     List Benzinga earnings.
@@ -1270,7 +1482,7 @@ async def list_benzinga_earnings(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -1286,6 +1498,9 @@ async def list_benzinga_firms(
     limit: Optional[int] = 10,
     sort: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     List Benzinga firms.
@@ -1304,7 +1519,7 @@ async def list_benzinga_firms(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -1356,6 +1571,9 @@ async def list_benzinga_guidance(
     limit: Optional[int] = 10,
     sort: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     List Benzinga guidance.
@@ -1410,7 +1628,7 @@ async def list_benzinga_guidance(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -1447,6 +1665,9 @@ async def list_benzinga_news(
     limit: Optional[int] = 10,
     sort: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     List Benzinga news.
@@ -1486,7 +1707,7 @@ async def list_benzinga_news(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -1550,6 +1771,9 @@ async def list_benzinga_ratings(
     limit: Optional[int] = 10,
     sort: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     List Benzinga ratings.
@@ -1616,7 +1840,7 @@ async def list_benzinga_ratings(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -1633,6 +1857,9 @@ async def list_futures_aggregates(
     limit: Optional[int] = 10,
     sort: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get aggregates for a futures contract in a given time range.
@@ -1652,7 +1879,7 @@ async def list_futures_aggregates(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -1668,6 +1895,9 @@ async def list_futures_contracts(
     limit: Optional[int] = 10,
     sort: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get a paginated list of futures contracts.
@@ -1686,7 +1916,7 @@ async def list_futures_contracts(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -1696,6 +1926,9 @@ async def get_futures_contract_details(
     ticker: str,
     as_of: Optional[Union[str, date]] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get details for a single futures contract at a specified point in time.
@@ -1708,7 +1941,7 @@ async def get_futures_contract_details(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -1727,6 +1960,9 @@ async def list_futures_products(
     limit: Optional[int] = 10,
     sort: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get a list of futures products (including combos).
@@ -1748,7 +1984,7 @@ async def list_futures_products(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -1759,6 +1995,9 @@ async def get_futures_product_details(
     type: Optional[str] = None,
     as_of: Optional[Union[str, date]] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get details for a single futures product as it was at a specific day.
@@ -1772,7 +2011,7 @@ async def get_futures_product_details(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -1793,6 +2032,9 @@ async def list_futures_quotes(
     limit: Optional[int] = 10,
     sort: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get quotes for a futures contract in a given time range.
@@ -1816,7 +2058,7 @@ async def list_futures_quotes(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -1837,6 +2079,9 @@ async def list_futures_trades(
     limit: Optional[int] = 10,
     sort: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get trades for a futures contract in a given time range.
@@ -1860,7 +2105,7 @@ async def list_futures_trades(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -1872,6 +2117,9 @@ async def list_futures_schedules(
     limit: Optional[int] = 10,
     sort: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get trading schedules for multiple futures products on a specific date.
@@ -1886,7 +2134,7 @@ async def list_futures_schedules(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -1902,6 +2150,9 @@ async def list_futures_schedules_by_product_code(
     limit: Optional[int] = 10,
     sort: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get schedule data for a single futures product across many trading dates.
@@ -1920,7 +2171,7 @@ async def list_futures_schedules_by_product_code(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -1932,6 +2183,9 @@ async def list_futures_market_statuses(
     limit: Optional[int] = 10,
     sort: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get market statuses for futures products.
@@ -1946,7 +2200,7 @@ async def list_futures_market_statuses(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
@@ -1968,6 +2222,9 @@ async def get_futures_snapshot(
     limit: Optional[int] = 10,
     sort: Optional[str] = None,
     params: Optional[Dict[str, Any]] = None,
+    fields: Optional[str] = None,
+    output_format: Optional[str] = "csv",
+    aggregate: Optional[str] = None,
 ) -> str:
     """
     Get snapshots for futures contracts.
@@ -1992,7 +2249,7 @@ async def get_futures_snapshot(
             raw=True,
         )
 
-        return json_to_csv(results.data.decode("utf-8"))
+        return _apply_output_filtering(results.data, fields, output_format, aggregate)
     except Exception as e:
         return f"Error: {e}"
 
