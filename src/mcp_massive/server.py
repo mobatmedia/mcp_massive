@@ -692,6 +692,12 @@ async def list_snapshot_options_chain(
         fields=["preset:ohlc"]
     """
     try:
+        # Validate contract_type if provided
+        if params and "contract_type" in params:
+            contract_type = params["contract_type"]
+            if contract_type not in ["call", "put"]:
+                return f"Error: contract_type must be 'call' or 'put' (singular), not '{contract_type}'. Use params={{'contract_type': 'call'}} or params={{'contract_type': 'put'}}"
+
         results = polygon_client.list_snapshot_options_chain(
             underlying_asset=underlying_asset,
             params=params,
