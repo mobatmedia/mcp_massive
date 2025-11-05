@@ -741,8 +741,19 @@ async def list_snapshot_options_chain(
             # Start with the requested limit (or default 10)
             initial_limit = (params or {}).get("limit", 10)
 
+            # Build progressive limit list, skipping values <= initial_limit
+            limit_progression = []
+            for candidate in [10, 50, 100, 250]:
+                if candidate >= initial_limit and candidate not in limit_progression:
+                    limit_progression.append(candidate)
+
+            # If initial_limit is already at or above max, just try once
+            if not limit_progression:
+                limit_progression = [initial_limit]
+
             # Try progressively larger limits until we get enough unique values
-            for attempt_limit in [initial_limit, 50, 100, 250]:
+            result = None
+            for attempt_limit in limit_progression:
                 # Make a copy of params with our limit
                 attempt_params = dict(params) if params else {}
                 attempt_params["limit"] = attempt_limit
@@ -767,7 +778,7 @@ async def list_snapshot_options_chain(
                     unique_count = len([line for line in lines[1:] if line and not line.startswith("Note:")])
 
                     # If we got a good number of unique values, or we've hit max limit, return
-                    if unique_count >= min(10, initial_limit) or attempt_limit == 250:
+                    if unique_count >= 10 or attempt_limit == 250:
                         if unique_count > 0:
                             return result
 
